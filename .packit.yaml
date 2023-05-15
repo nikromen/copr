@@ -1,0 +1,61 @@
+# See the documentation for more information:
+# https://packit.dev/docs/configuration/
+upstream_project_url: https://github.com/fedora-copr/copr.git
+
+packages:
+
+  python-copr:
+    downstream_package_name: python-copr
+    upstream_package_name: copr
+    paths: 
+      - ./python
+    specfile_path: python-copr.spec
+    files_to_sync: 
+      - python-copr.spec
+    upstream_tag_template: python-copr-{version}
+
+  copr-cli:
+    downstream_package_name: copr-cli
+    upstream_package_name: copr-cli
+    paths: 
+      - ./cli
+    specfile_path: copr-cli.spec
+    files_to_sync: 
+      - copr-cli.spec
+    upstream_tag_template: copr-cli-{version}
+    actions:
+      post-upstream-clone: sleep 300 # to have the newer python-copr-common
+
+  copr-frontend:
+    downstream_package_name: copr-frontend
+    upstream_package_name: copr-frontend
+    paths: 
+      - ./frontend
+    specfile_path: copr-frontend.spec
+    files_to_sync: 
+      - copr-frontend.spec
+    upstream_tag_template: copr-frontend-{version}
+    actions:
+      post-upstream-clone: sleep 300 # to have the newer python-copr-common
+  
+jobs:
+  - job: copr_build
+    packages:
+      - python-copr
+      - copr-cli
+      - copr-frontend
+    trigger: pull_request
+    targets: fedora-37
+    owner: packit
+    project: copr
+
+  - job: copr_build
+    packages:
+      - python-copr
+      - copr-cli
+      - copr-frontend
+    trigger: commit
+    branch: main
+    targets: fedora-all
+    owner: packit
+    project: copr
