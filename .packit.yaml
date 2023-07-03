@@ -24,7 +24,8 @@ packages:
       - copr-cli.spec
     upstream_tag_template: copr-cli-{version}
     actions:
-      post-upstream-clone: sleep 300 # to have the newer python-copr-common
+      post-upstream-clone:
+        - sh -c "wait-for-copr --owner $COPR_OWNER --project $COPR_PROJECT python-copr `git rev-parse --short HEAD`"
 
   copr-frontend:
     downstream_package_name: copr-frontend
@@ -36,8 +37,14 @@ packages:
       - copr-frontend.spec
     upstream_tag_template: copr-frontend-{version}
     actions:
-      post-upstream-clone: sleep 300 # to have the newer python-copr-common
-  
+      post-upstream-clone:
+        - sh -c "wait-for-copr --owner $COPR_OWNER --project $COPR_PROJECT python-copr `git rev-parse --short HEAD`"
+
+
+srpm_build_deps:
+  - wait-for-copr # this tool is used to resolve waiting for dependent builds (comes from Packit Copr repo)
+merge_pr_in_ci: False
+
 jobs:
   - job: copr_build
     packages:
@@ -45,9 +52,8 @@ jobs:
       - copr-cli
       - copr-frontend
     trigger: pull_request
-    targets: fedora-37
-    owner: packit
-    project: copr
+    targets:
+      - fedora-all
 
   - job: copr_build
     packages:
