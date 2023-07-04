@@ -54,6 +54,7 @@ jobs:
     trigger: pull_request
     targets:
       - fedora-all
+      - epel-9
 
   - job: copr_build
     packages:
@@ -62,6 +63,8 @@ jobs:
       - copr-frontend
     trigger: commit
     branch: main
-    targets: fedora-all
+    targets:
+      - fedora-all
+      - epel-9
     owner: packit
     project: copr
