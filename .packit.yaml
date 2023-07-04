@@ -14,6 +14,76 @@ packages:
       - python-copr.spec
     upstream_tag_template: python-copr-{version}
 
+  python-copr-common:
+    downstream_package_name: python-copr-common
+    upstream_package_name: copr-common
+    paths:
+      - ./common
+    specfile_path: python-copr-common.spec
+    files_to_sync:
+      - python-copr-common.spec
+    upstream_tag_template: python-copr-common-{version}
+
+  copr-backend:
+    downstream_package_name: copr-backend
+    upstream_package_name: copr-backend
+    paths:
+      - ./backend
+    specfile_path: copr-backend.spec
+    files_to_sync:
+      - copr-backend.spec
+    upstream_tag_template: copr-backend-{version}
+
+  copr-dist-git:
+    downstream_package_name: copr-dist-git
+    upstream_package_name: copr-dist-git
+    paths:
+      - ./dist-git
+    specfile_path: copr-dist-git.spec
+    files_to_sync:
+      - copr-dist-git.spec
+    upstream_tag_template: copr-dist-git-{version}
+
+  copr-keygen:
+    downstream_package_name: copr-keygen
+    upstream_package_name: copr-keygen
+    paths:
+      - ./keygen
+    specfile_path: copr-keygen.spec
+    files_to_sync:
+      - copr-keygen.spec
+    upstream_tag_template: copr-keygen-{version}
+
+  copr-messaging:
+    downstream_package_name: copr-messaging
+    upstream_package_name: copr-messaging
+    paths:
+      - ./messaging
+    specfile_path: copr-messaging.spec
+    files_to_sync:
+      - copr-messaging.spec
+    upstream_tag_template: copr-messaging-{version}
+
+  copr-rpmbuild:
+    downstream_package_name: copr-rpmbuild
+    upstream_package_name: copr-rpmbuild
+    paths:
+      - ./rpmbuild
+    specfile_path: copr-rpmbuild.spec
+    files_to_sync:
+      - copr-rpmbuild.spec
+    upstream_tag_template: copr-rpmbuild-{version}
+
+  copr-selinux:
+    downstream_package_name: copr-selinux
+    upstream_package_name: copr-selinux
+    paths:
+      - ./selinux
+    specfile_path: copr-selinux.spec
+    files_to_sync:
+      - copr-selinux.spec
+    upstream_tag_template: copr-selinux-{version}
+
   copr-cli:
     downstream_package_name: copr-cli
     upstream_package_name: copr-cli
@@ -42,29 +112,88 @@ packages:
 
 
 srpm_build_deps:
-  - wait-for-copr # this tool is used to resolve waiting for dependent builds (comes from Packit Copr repo)
+  # this tool is used to resolve waiting for dependent builds (comes from Packit Copr repo)
+  - wait-for-copr
+
 merge_pr_in_ci: False
+
 
 jobs:
   - job: copr_build
     packages:
-      - python-copr
-      - copr-cli
+      - copr-backend
+      - copr-keygen
+      - copr-messaging
+      - copr-dist-git
       - copr-frontend
     trigger: pull_request
     targets:
       - fedora-all
-      - epel-9
+
+  - job: copr_build
+    packages:
+      - copr-rpmbuild
+      - copr-selinux
+    trigger: pull_request
+    targets:
+      - fedora-all
+      - fedora-all-aarch64
+      - fedora-all-ppc64le
+      - epel-all
 
   - job: copr_build
     packages:
       - python-copr
+      - python-copr-common
       - copr-cli
+    trigger: pull_request
+    targets:
+      - fedora-all
+      - fedora-all-aarch64
+      - fedora-all-ppc64le
+      - epel-all
+      - epel-7
+
+  - job: copr_build
+    packages:
+      - copr-backend
+      - copr-keygen
+      - copr-messaging
+      - copr-dist-git
       - copr-frontend
     trigger: commit
     branch: main
     targets:
       - fedora-all
-      - epel-9
+    owner: packit
+    project: copr
+
+  - job: copr_build
+    packages:
+      - copr-rpmbuild
+      - copr-selinux
+    trigger: commit
+    branch: main
+    targets:
+      - fedora-all
+      - fedora-all-aarch64
+      - fedora-all-ppc64le
+      - epel-all
+    owner: packit
+    project: copr
+
+  - job: copr_build
+    packages:
+      - python-copr
+      - python-copr-common
+      - copr-cli
+    trigger: commit
+    branch: main
+    targets:
+      - fedora-all
+      - fedora-all-aarch64
+      - fedora-all-ppc64le
+      - epel-all
+      - epel-7
     owner: packit
     project: copr
