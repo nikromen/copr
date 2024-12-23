@@ -45,6 +45,7 @@ import commands.warning_banner
 import commands.usage_treemap
 import commands.failed_to_succeeded_stats
 import commands.change_storage
+import commands.get_pkgs_build_time_data
 
 from coprs import app
 
