@@ -1,7 +1,7 @@
 %global srcname copr-common
 
 Name:       python-copr-common
-Version:    1.4
+Version:    1.5
 Release:    1%{?dist}
 Summary:    Python code used by Copr
 
@@ -79,6 +79,11 @@ version=%version %py3_install
 
 
 %changelog
+* Mon Dec 08 2025 Jiri Kyjovsky <j1.kyjovsky@gmail.com> 1.5-1
+- backend, common: set user agent for Pulp requests to crc-pulp-client
+- common: send JSON data for PATCH requests
+- backend, common: implement chunked uploads to Pulp
+
 * Mon Sep 29 2025 Jakub Kadlcik <frostyx@email.cz> 1.4-1
 - Increase the user SSH builder max expiration to 3 days
 
