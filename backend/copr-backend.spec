@@ -5,7 +5,7 @@
 %global copr_common_version 1.2.1
 
 Name:       copr-backend
-Version:    2.10
+Version:    2.11
 Release:    1%{?dist}
 Summary:    Backend for Copr
 
@@ -238,6 +238,34 @@ install -m0644 -D conf/copr-backend.sysusers.conf %{buildroot}%{_sysusersdir}/co
 %exclude %{_pkgdocdir}/lighttpd
 
 %changelog
+* Mon Dec 08 2025 Jiri Kyjovsky <j1.kyjovsky@gmail.com> 2.11-1
+- backend: timeout= for requests was missing, use SafeRequest
+- backend: make the waiting for repos more verbose
+- backend: copr_prune_results: bigger file limit
+- backend: move pulp-redirect.txt to persistent storage
+- backend: wait until both copr_base and copr_coprdir exist
+- backend: skip already migrated projects
+- backend: show progress of currently uploaded RPMs
+- backend: catch KeyboardInterrupt exception
+- backend, common: set user agent for Pulp requests to crc-pulp-client
+- backend: set longer timeout for Pulp file uploads
+- backend: ignore the "Regenerate" button for Pulp projects without manual
+  createrepo
+- backend: recognize Pulp format for RPM package URLs
+- backend: fix deleting project from pulp-redirect.txt
+- backend: spec: drop requirement on pytz
+- backend: Add Pagination for PulpClient.get_content
+- backend: allow non-standard ssh ports on builders
+- backend, common: implement chunked uploads to Pulp
+- backend: catch 400 from timeouted Pulp uploads
+- backend: don't create "spawner", "terminator" and "vmm" logs
+- remove general exception handling
+- fix linting errors
+- feat: continue on exceptions in prune_results
+- feat: add exception handling
+- backend: fix hitcounter auth to frontend
+- backend, frontend: add option to migrate all projects for an owner
+
 * Mon Sep 29 2025 Jakub Kadlcik <frostyx@email.cz> 2.10-1
 - Don't run builds or actions in projects that are migrated to Pulp
 - Log conflicting NEVRAs when uploading
