@@ -1,7 +1,7 @@
 %global srcname copr
 
 Name:       python-copr
-Version:    2.4
+Version:    2.5
 Release:    1%{?dist}
 Summary:    Python interface for Copr
 
@@ -136,6 +136,19 @@ cp -a docs/_build/html %{buildroot}%{_pkgdocdir}/
 %doc %{_pkgdocdir}
 
 %changelog
+* Mon Dec 08 2025 Jiri Kyjovsky <j1.kyjovsky@gmail.com> 2.5-1
+- frontend, cli, python: add API endpoint for generating a new token
+- doc, python: fix errors and warnings when building documentation Fix #3955 -
+  add double underscore in package_source_types.rst - handle WARNING: Duplicate
+  explicit target name - add double backticks in copr/v3/proxies project.py and
+  project_chroot.py - handle WARNING: 'any' reference target not found - add
+  :orphan: to rst files that are not in any doctree - handle WARNING: document
+  isn't included in any toctree - add sphinx.ext.todo in sphinx conf - handle
+  ERROR: Unknown directive type 'todo' - remove from docs/client_v3/proxies.rst
+  - fix for autodoc: failed to import class - remove try-except block and use
+  importlib to check for theme package
+- python: Make copr.v3.helpers.wait official part of API
+
 * Mon Sep 29 2025 Jakub Kadlcik <frostyx@email.cz> 2.4-1
 - Drop support for building modules
 
