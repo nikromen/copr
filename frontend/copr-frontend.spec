@@ -47,7 +47,7 @@
 }
 
 Name:       copr-frontend
-Version:    2.5
+Version:    2.6
 Release:    1%{?dist}
 Summary:    Frontend for Copr
 
@@ -373,6 +373,20 @@ install -m0644 -D conf/copr-frontend.sysusers.conf %{buildroot}%{_sysusersdir}/c
 
 
 %changelog
+* Mon Dec 08 2025 Jiri Kyjovsky <j1.kyjovsky@gmail.com> 2.6-1
+- frontend: don't traceback for when copr.storage is None
+- frontend: remove last leftovers of modularity
+- frontend: generate build URL from a preloaded copr object
+- frontend: preload copr.forked_from.group and copr.forked_from.user
+- frontend: preload fields for streamed responses
+- frontend: migrate from pytz to zoneinfo
+- frontend, cli, python: add API endpoint for generating a new token
+- frontend: drop custom RedisSession in favor of flask-session
+- frontend: fix swapped canceled and ended builds
+- frontend: do not traceback for OAuthError
+- backend, frontend: add option to migrate all projects for an owner
+- frontend, cli: Add wildcard support for 'Packit allowed forge projects'
+
 * Mon Sep 29 2025 Jakub Kadlcik <frostyx@email.cz> 2.5-1
 - Don't run builds or actions in projects that are migrated to Pulp
 - Drop support for building modules
