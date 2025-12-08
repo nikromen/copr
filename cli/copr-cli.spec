@@ -2,7 +2,7 @@
 %global min_python_copr_version 1.128.1
 
 Name:       copr-cli
-Version:    2.3
+Version:    2.4
 Release:    1%{?dist}
 Summary:    Command line interface for COPR
 
@@ -91,6 +91,10 @@ install -m 755 copr_cli/package_build_order.py %{buildroot}/%{_bindir}/package-b
 
 
 %changelog
+* Mon Dec 08 2025 Jiri Kyjovsky <j1.kyjovsky@gmail.com> 2.4-1
+- frontend, cli, python: add API endpoint for generating a new token
+- frontend, cli: Add wildcard support for 'Packit allowed forge projects'
+
 * Mon Sep 29 2025 Jakub Kadlcik <frostyx@email.cz> 2.3-1
 - Drop support for building modules
 
