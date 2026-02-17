@@ -1,10 +1,15 @@
 """
 Allocate VMs
+
+Supports two backends:
+  - ResallocHostFactory  (legacy, XML-RPC based resalloc)
+  - ReservoirHostFactory (new, Kubernetes-native Reservoir)
 """
 
 import time
 import yaml
 from resalloc.client import Connection as ResallocConnection
+from reservoir.client import ReservoirClient, ReservoirError
 
 
 class RemoteHostAllocationTerminated(Exception):
@@ -148,6 +153,59 @@ class ResallocHost(RemoteHost):
         return message
 
 
+class ReservoirHost(RemoteHost):
+    """
+    VM representation using the Kubernetes-native Reservoir allocator.
+
+    Uses BuilderRequest CRDs instead of resalloc XML-RPC tickets.
+    The Reservoir operator handles pool management, provisioning,
+    matching, and reuse — all via the K8s API.
+    """
+    name = None
+    requested_tags = None
+
+    def __init__(self, client, request_name):
+        self._client = client
+        self._request_name = request_name
+
+    def check_ready(self):
+        try:
+            info = self._client.collect(self._request_name)
+        except ReservoirError:
+            raise RemoteHostAllocationTerminated
+
+        if info.failed or info.closed:
+            raise RemoteHostAllocationTerminated
+
+        if info.ready:
+            self.hostname = info.hostname
+            self.ssh_port = info.ssh_port
+            self.name = info.instance_name
+            return True
+
+        return False
+
+    def release(self):
+        try:
+            self._client.release_builder(self._request_name)
+        except ReservoirError:
+            pass  # best-effort release
+
+    @property
+    def info(self):
+        message = "ReservoirHost"
+        message += ", request={}".format(self._request_name)
+        if self.hostname:
+            message += ", hostname={}".format(self.hostname)
+        if self.name:
+            message += ", name={}".format(self.name)
+        if self.requested_tags:
+            message += f", requested_tags={self.requested_tags}"
+        if self.ssh_port is not None:
+            message += f", port={self.ssh_port}"
+        return message
+
+
 class HostFactory:
     """ Abstract host provider """
     def get_host(self, tags=None, sandbox=None):
@@ -174,5 +232,27 @@ class ResallocHostFactory(HostFactory):
         request_tags = sorted(set(request_tags))
         host = ResallocHost()
         host.ticket = self.conn.newTicket(request_tags, sandbox)
+        host.requested_tags = request_tags
+        return host
+
+
+class ReservoirHostFactory(HostFactory):
+    """
+    Provide worker hosts using Reservoir (Kubernetes-native allocator).
+
+    Drop-in replacement for ResallocHostFactory — same interface,
+    different backend.
+    """
+    def __init__(self, namespace="reservoir"):
+        self._client = ReservoirClient(namespace=namespace)
+
+    def get_host(self, tags=None, sandbox=None):
+        request_tags = ["copr_builder"]
+        if tags:
+            request_tags.extend(tags)
+        request_tags = sorted(set(request_tags))
+
+        info = self._client.request_builder(request_tags, sandbox)
+        host = ReservoirHost(self._client, info.request_name)
         host.requested_tags = request_tags
         return host

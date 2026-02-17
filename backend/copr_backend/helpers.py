@@ -384,6 +384,10 @@ class BackendConfigReader(object):
 
         opts.resalloc_connection = _get_conf(
             cp, "backend", "resalloc_connection", "http://localhost:49100")
+        opts.vm_allocator = _get_conf(
+            cp, "backend", "vm_allocator", "resalloc")
+        opts.reservoir_namespace = _get_conf(
+            cp, "backend", "reservoir_namespace", "reservoir")
         opts.builds_max_workers = _get_conf(
             cp, "backend", "builds_max_workers",
             default=60, mode="int")

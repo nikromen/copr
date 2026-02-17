@@ -38,7 +38,7 @@ from copr_backend.job import BuildJob
 from copr_backend.msgbus import MessageSender
 from copr_backend.sign import sign_rpms_in_dir, get_pubkey
 from copr_backend.sshcmd import SSHConnection, SSHConnectionError
-from copr_backend.vm_alloc import ResallocHostFactory
+from copr_backend.vm_alloc import ResallocHostFactory, ReservoirHostFactory
 from copr_backend.storage import storage_for_job
 
 
@@ -489,7 +489,11 @@ class BuildBackgroundWorker(BackendBackgroundWorker):
         """
 
         self.log.info("VM allocation process starts")
-        vm_factory = ResallocHostFactory(server=self.opts.resalloc_connection)
+        if getattr(self.opts, 'vm_allocator', 'resalloc') == 'reservoir':
+            vm_factory = ReservoirHostFactory(
+                namespace=getattr(self.opts, 'reservoir_namespace', 'reservoir'))
+        else:
+            vm_factory = ResallocHostFactory(server=self.opts.resalloc_connection)
         while True:
             self.host = vm_factory.get_host(self.job.tags, self.job.sandbox)
             self.log.info("Trying to allocate VM: %s", self.host.info)
