@@ -1,4 +1,7 @@
 ---
+# copr-database's pgdata permission handling lives in base/database.yaml's
+# securityContext (fsGroupChangePolicy: OnRootMismatch) rather than here --
+# only the anyuid SCC binding is OpenShift-specific.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

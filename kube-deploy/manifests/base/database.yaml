@@ -22,6 +22,16 @@ spec:
       securityContext:
         runAsUser: 26
         fsGroup: 26
+        # On OpenShift, the default fsGroupChangePolicy ("Always") recursively
+        # chowns/chmods the PVC on every mount, which can leave pgdata
+        # group-writable (e.g. 0770) -- Postgres refuses to start unless it's
+        # exactly 0700 or 0750. "OnRootMismatch" makes the kubelet skip the
+        # recursive change (and the permissions Postgres set on first init)
+        # whenever the volume root already has the expected ownership/perms,
+        # so this only bites once (on a brand new PVC) instead of every pod
+        # restart. Ignored by Tier 1 (podman kube play doesn't implement CSI
+        # fsGroup semantics), harmless there.
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: database
           image: copr-database:latest

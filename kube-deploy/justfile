@@ -118,11 +118,59 @@ push-images-to-crc: build
     done
     echo "All images loaded into CRC VM"
 
+# Configure MicroShift's DNS so *.apps.crc.testing route hostnames resolve
+# from inside the cluster (e.g. so distgit-importer can reach
+# copr-backend-copr.apps.crc.testing when downloading srpms).
+#
+# NOTE: earlier versions of this recipe patched the openshift-dns/dns-default
+# ConfigMap directly (injecting a custom CoreDNS zone). That ConfigMap is
+# owned/re-rendered by MicroShift's infrastructure-services-manager, which
+# periodically resyncs it back to the stock template -- silently wiping the
+# manual zone (with no restart or visible trigger) and breaking in-cluster
+# resolution some time after every deploy. MicroShift 4.21 doesn't yet
+# support a fully custom Corefile, but it does support "dns.hosts" -- a
+# supported, reconciliation-safe /etc/hosts-style override that CoreDNS's
+# "hosts" plugin picks up (with fallthrough), and that MicroShift itself
+# keeps in sync across resyncs. Use that instead.
+#
+# Diffs the desired state against what's already on the CRC VM and only
+# writes + restarts MicroShift if something changed (a restart costs
+# ~10-60s of API downtime) -- all within a single SSH session, so this is
+# cheap to call unconditionally on every `up-openshift`. The actual
+# diff/write/restart logic lives in scripts/configure-microshift-dns-remote.sh
+# (piped to `sudo bash -s` over SSH) rather than inline here, since `just`
+# parses shebang-recipe bodies by indentation and can't host a heredoc whose
+# content must stay unindented for the remote shell. Route hostnames are
+# passed base64-encoded to avoid any quoting hassle with embedded newlines
+# when they're spliced into the remote command line.
+[private]
+configure-microshift-dns:
+    #!/bin/bash
+    set -euo pipefail
+    echo "Configuring cluster DNS for route resolution..."
+    ROUTER_IP=$(oc get svc -n openshift-ingress router-default -o jsonpath='{.spec.clusterIP}')
+    ROUTE_HOSTS_B64=$(oc get routes -n copr -o jsonpath='{range .items[*]}{.spec.host}{"\n"}{end}' | base64 -w0)
+    set +e
+    {{crc_ssh}} "sudo bash -s -- '$ROUTER_IP' '$ROUTE_HOSTS_B64'" < "{{justfile_directory()}}/scripts/configure-microshift-dns-remote.sh"
+    RC=$?
+    set -e
+    if [ "$RC" -eq 10 ]; then
+        echo "  Waiting for MicroShift API to come back..."
+        for i in $(seq 1 30); do
+            oc get --raw /healthz >/dev/null 2>&1 && break
+            sleep 2
+        done
+        echo "  CoreDNS route hosts configured"
+    elif [ "$RC" -ne 0 ]; then
+        echo "  ERROR: configure-microshift-dns failed (remote exit $RC)" >&2
+        exit "$RC"
+    fi
+
 # Deploy to MicroShift (builds images, pushes to VM, applies manifests)
 up-openshift: generate-ssh-keys push-images-to-crc
     #!/bin/bash
     set -euo pipefail
-    eval $(crc oc-env)
+    eval $(crc oc-env --shell bash)
     echo "Creating namespace..."
     oc create namespace copr 2>/dev/null || true
     echo "Granting SCCs..."
@@ -138,6 +186,14 @@ up-openshift: generate-ssh-keys push-images-to-crc
         --dry-run=client -o yaml | oc apply -f -
     echo "Applying manifests..."
     kustomize build manifests/overlays/openshift/ | oc apply -f -
+    # Images are always tagged ":latest" with imagePullPolicy: Never (loaded
+    # straight into the VM's container storage above), so `oc apply` sees no
+    # spec diff and won't recreate pods on its own -- force a rollout restart
+    # so already-running pods pick up the freshly loaded image content.
+    echo "Restarting deployments to pick up freshly loaded images..."
+    oc rollout restart deployment -n copr
+    just configure-microshift-dns
+
     echo "COPR is deploying on MicroShift"
     echo "  just status-openshift       # check deployment"
     echo "  oc logs -n copr <pod>       # view pod logs"
@@ -145,7 +201,7 @@ up-openshift: generate-ssh-keys push-images-to-crc
 # Stop OpenShift deployment
 down-openshift:
     #!/bin/bash
-    eval $(crc oc-env)
+    eval $(crc oc-env --shell bash)
     oc delete pods -n copr -l app=copr-builder --ignore-not-found 2>/dev/null || true
     kustomize build manifests/overlays/openshift/ | oc delete --ignore-not-found -f - 2>/dev/null || true
     oc delete namespace copr --ignore-not-found 2>/dev/null || true
@@ -154,7 +210,7 @@ down-openshift:
 # Show OpenShift deployment status
 status-openshift:
     #!/bin/bash
-    eval $(crc oc-env)
+    eval $(crc oc-env --shell bash)
     echo "=== Pods ==="
     oc get pods -n copr 2>/dev/null || echo "  (namespace not found)"
     echo ""

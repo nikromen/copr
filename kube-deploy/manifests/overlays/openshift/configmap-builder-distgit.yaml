@@ -1,0 +1,26 @@
+---
+# dist-git-client (in the shared builder image) whitelists trusted clone
+# hostnames in /etc/dist-git-client/*.ini (all *.ini files in the directory
+# are merged, see dist_git_client.py:_load_config). The base image only
+# knows the internal "distgit" hostname used by Tier 1 (podman kube play).
+# On OpenShift, frontend advertises the public Route hostname as the distgit
+# clone URL (so browser links work), so builder pods here also need to
+# trust that hostname. This file is mounted only into builder pods spawned
+# by k8s-new, so the shared builder image itself stays tier-agnostic.
+#
+# NOTE: this must use its OWN section name ("distgit-openshift"), not
+# "[distgit]". dist_git_client._load_config() globs *.ini files in
+# unspecified (non-alphabetical) order, and ConfigParser has same-section
+# keys from whichever file loads last silently win -- so re-declaring
+# "clone_hostnames" under "[distgit]" here would race with copr.ini's
+# own "[distgit]" section instead of extending it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: copr-builder-distgit-client
+data:
+  zz-openshift.ini: |
+    [distgit-openshift]
+    clone_hostnames = copr-distgit-copr.apps.crc.testing
+    lookaside_location = http://copr-distgit-copr.apps.crc.testing
+    lookaside_uri_pattern = repo/pkgs/{namespace[1]}/{namespace[0]}/{name}/{filename}/{hash}/{filename}
