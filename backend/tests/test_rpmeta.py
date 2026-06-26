@@ -192,6 +192,10 @@ class TestRpmetaPredictBuildTime:
             record = json.loads(fh.readline())
 
         assert record["build_id"] == 12345
+        assert record["chroot"] == "fedora-41-x86_64"
+        assert record["arch"] == "x86_64"
+        assert record["package_name"] == "test-pkg"
+        assert record["package_version"] == "0:1.2.3-1.fc41"
         assert record["prediction"] == prediction_val
         assert record["recommends_powerful"] is expect_powerful
         assert record["has_powerful_tag"] is expect_powerful_tag
