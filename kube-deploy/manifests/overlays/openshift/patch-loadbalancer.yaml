@@ -1,0 +1,12 @@
+# Prototype public access: expose the frontend directly via an AWS-provisioned
+# Network Load Balancer instead of a Route. No TLS, no custom domain -- just
+# a reachable public hostname/IP as fast as possible. openshift-local's
+# routes.yaml (inherited from base) is left in place and harmless; it simply
+# won't be reachable unless/until a real Route+domain+TLS setup replaces
+# this patch for an actual production deployment.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+spec:
+  type: LoadBalancer

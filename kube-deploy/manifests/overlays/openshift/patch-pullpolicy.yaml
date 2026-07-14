@@ -1,3 +1,6 @@
+# openshift-local sets imagePullPolicy: Never everywhere, because its images
+# are loaded straight into the CRC VM's local container storage. On a real
+# cluster the images actually live in a registry, so switch to IfNotPresent.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -9,14 +12,14 @@ spec:
       $patch: merge
       initContainers:
         - name: wait-database
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: wait-redis
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: frontend-init
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
       containers:
         - name: frontend
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -27,20 +30,20 @@ spec:
     spec:
       initContainers:
         - name: wait-redis
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: wait-resalloc
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: render-config
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
       containers:
         - name: backend-log
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: backend-build
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: backend-action
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: backend-httpd
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -51,14 +54,14 @@ spec:
     spec:
       initContainers:
         - name: wait-frontend
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: render-config
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
       containers:
         - name: distgit
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: distgit-httpd
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -69,9 +72,9 @@ spec:
     spec:
       containers:
         - name: keygen-signd
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
         - name: keygen-httpd
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -82,7 +85,7 @@ spec:
     spec:
       containers:
         - name: database
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -93,8 +96,14 @@ spec:
     spec:
       containers:
         - name: redis
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
 ---
+# Also override BUILDER_IMAGE here: openshift-local/patch-resalloc.yaml
+# hardcodes it to "localhost/copr-builder:latest" as a plain env var string,
+# which the `images:` transformer above can't rewrite (it only touches
+# spec.containers[].image, not arbitrary env values). Resalloc's k8s-new
+# provisioning script reads this to spawn builder pods, so it must point at
+# the same registry the other images were pushed to.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -104,6 +113,9 @@ spec:
     spec:
       containers:
         - name: resalloc
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BUILDER_IMAGE
+              value: "REPLACE_COPR_REGISTRY/copr-builder:latest"
         - name: resalloc-webui
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent

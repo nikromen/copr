@@ -15,7 +15,7 @@ ROUTER_IP="$1"
 ROUTE_HOSTS=$(echo "$2" | base64 -d)
 
 DESIRED_HOSTS_FILE=$(printf '%s\n' "$ROUTE_HOSTS" | while read -r host; do
-    [ -n "$host" ] && printf '%s %s\n' "$ROUTER_IP" "$host"
+    [ -z "$host" ] || printf '%s %s\n' "$ROUTER_IP" "$host"
 done)
 DESIRED_MS_CONFIG=$'dns:\n  hosts:\n    status: Enabled\n    file: /etc/microshift/hosts\n'
 

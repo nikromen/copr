@@ -63,7 +63,7 @@ and pipes the result to `podman kube play`.
 
 Run `just` to see all available commands.
 
-## Local OpenShift (CRC MicroShift)
+## OpenShift Local (CRC MicroShift)
 
 Run Copr on a local OpenShift cluster using CRC
 with the MicroShift preset.
@@ -82,16 +82,16 @@ crc start
 ### Deploy
 
 ```bash
-just up-openshift       # Build images, push to CRC, apply manifests
-just status-openshift   # Check pod status
-just down-openshift     # Tear down
+just up-openshift-local       # Build images, push to CRC, apply manifests
+just status-openshift-local   # Check pod status
+just down-openshift-local     # Tear down
 ```
 
 Images are built locally with `podman`, transferred into the CRC VM via
 `podman save | ssh podman load`, and referenced as `localhost/copr-*` with
-`imagePullPolicy: Never`. The `overlays/openshift/` kustomization handles
-image name prefixing, pull policy, security contexts, and resalloc pool
-sizing.
+`imagePullPolicy: Never`. The `overlays/openshift-local/` kustomization
+handles image name prefixing, pull policy, security contexts, and resalloc
+pool sizing.
 
 ### Running tests
 
@@ -105,3 +105,63 @@ TODO: still needs some tweaks... will fill out after https://github.com/fedora-c
 | Backend results | http://copr-backend-copr.apps.crc.testing |
 | Dist-git | http://copr-distgit-copr.apps.crc.testing |
 | Resalloc WebUI | http://copr-resalloc-copr.apps.crc.testing/pools |
+
+## OpenShift Prototype (real cluster, e.g. ROSA)
+
+A minimal overlay to get Copr running on a real OpenShift cluster (e.g.
+[ROSA](https://www.redhat.com/en/technologies/cloud-computing/openshift/aws))
+reachable on a public IP/hostname as fast as possible. This is deliberately
+**not** production-hardened -- see
+[Known gaps for real production](#known-gaps-for-real-production) below.
+
+### Prerequisites
+
+- An already-provisioned OpenShift cluster and an active `oc login` session
+  (cluster and AWS/ROSA provisioning itself is out of scope here)
+- A container registry you can push to (e.g. `quay.io/<your-org>`) and are
+  logged into with `podman login`
+- `COPR_REGISTRY` environment variable set to that registry
+  (defaults to `quay.io/copr`)
+
+### Deploy
+
+```bash
+export COPR_REGISTRY=quay.io/<your-org>
+just up-openshift       # Build+push images, apply manifests, wait for public LB
+just status-openshift   # Check pod status and the frontend Service
+just down-openshift     # Tear down
+```
+
+`up-openshift` builds and pushes all images to `$COPR_REGISTRY`, applies the
+`overlays/openshift/` kustomization (which layers on top of
+`overlays/openshift-local/`, reusing its SCCs/RBAC/builder provisioning), and
+turns the `frontend` Service into a `type: LoadBalancer` -- no Route, no TLS,
+no custom domain. Once AWS assigns the load balancer a public hostname, the
+recipe points `PUBLIC_COPR_HOSTNAME`/`PUBLIC_COPR_BASE_URL` at it and restarts
+the frontend so Flask's `Host` header check matches.
+
+### Known gaps for real production
+
+This prototype intentionally skips everything below. Treat it as a checklist
+of decisions/work needed before running real production traffic on it:
+
+- **TLS and a real domain** -- no Route/cert, just plain HTTP on a
+  LoadBalancer hostname
+- **Secrets management** -- `base/secrets/*.yaml` cleartext dev credentials
+  are reused as-is; fine for a throwaway prototype, not for real data
+- **Builder security** -- reuses the shared `privileged` SCC bound to
+  `copr-anyuid`; a real deployment should use a purpose-built, narrower SCC
+- **Storage** -- PVCs use the cluster default storage class and dev-sized
+  capacities, not sized/classed for real workloads
+- **Resource sizing / HA** -- dev resource requests/limits, single replica
+  everywhere, no PodDisruptionBudgets
+- **Outgoing email** -- `SEND_EMAILS` stays off; frontend's `mail.py` hardcodes
+  `SMTP("localhost")` with no relay configured
+- **Backups** -- no backup of the Postgres database or the keygen GPG keys
+- **Multi-arch builders** -- only x86_64 is exercised; aarch64 would need a
+  Graviton machine pool + nodeSelector, other arches would need a QEMU/binfmt
+  story that doesn't exist yet for this container image
+- **CI/CD** -- image build+push is manual (`just build-push-production`), no
+  automated pipeline
+- **Monitoring/alerting** -- nothing beyond whatever the cluster provides by
+  default

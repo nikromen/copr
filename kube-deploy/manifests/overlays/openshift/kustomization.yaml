@@ -1,37 +1,38 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: copr
-
-sortOptions:
-  order: fifo
-
+# Prototype overlay for a real OpenShift cluster (e.g. ROSA). Layers on top
+# of openshift-local instead of base, so it inherits the SCC/RBAC bindings,
+# resalloc k8s-based builder provisioning and Routes/configmaps as-is. Only
+# the image registry, pull policy and public access story change here -- see
+# kube-deploy/README.md "OpenShift Prototype" section for the full list of
+# things deliberately NOT handled by this overlay yet.
 resources:
-  - ../../base
-  - routes.yaml
-  - rbac.yaml
-  - configmap-builder-distgit.yaml
-
-images:
-  - name: copr-frontend
-    newName: localhost/copr-frontend
-  - name: copr-backend
-    newName: localhost/copr-backend
-  - name: copr-backend-httpd
-    newName: localhost/copr-backend-httpd
-  - name: copr-database
-    newName: localhost/copr-database
-  - name: copr-redis
-    newName: localhost/copr-redis
-  - name: copr-distgit
-    newName: localhost/copr-distgit
-  - name: copr-keygen
-    newName: localhost/copr-keygen
-  - name: copr-resalloc
-    newName: localhost/copr-resalloc
+  - ../openshift-local
 
 patches:
   - path: patch-pullpolicy.yaml
-  - path: patch-resalloc.yaml
-  - path: patch-security.yaml
-  - path: patch-urls.yaml
+  - path: patch-loadbalancer.yaml
+
+# openshift-local's own `images:` transformer already rewrote the base
+# `copr-*:latest` references to `localhost/copr-*:latest` -- match on that
+# here and push them out to a real registry instead. REPLACE_COPR_REGISTRY
+# is substituted at deploy time by the justfile (same pattern as
+# COPR_SOURCE_PATH/REPLACE_COPR_SSH_DIR elsewhere in this repo).
+images:
+  - name: localhost/copr-frontend
+    newName: REPLACE_COPR_REGISTRY/copr-frontend
+  - name: localhost/copr-backend
+    newName: REPLACE_COPR_REGISTRY/copr-backend
+  - name: localhost/copr-backend-httpd
+    newName: REPLACE_COPR_REGISTRY/copr-backend-httpd
+  - name: localhost/copr-database
+    newName: REPLACE_COPR_REGISTRY/copr-database
+  - name: localhost/copr-redis
+    newName: REPLACE_COPR_REGISTRY/copr-redis
+  - name: localhost/copr-distgit
+    newName: REPLACE_COPR_REGISTRY/copr-distgit
+  - name: localhost/copr-keygen
+    newName: REPLACE_COPR_REGISTRY/copr-keygen
+  - name: localhost/copr-resalloc
+    newName: REPLACE_COPR_REGISTRY/copr-resalloc
