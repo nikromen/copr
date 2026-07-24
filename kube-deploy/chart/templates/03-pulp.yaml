@@ -1,0 +1,95 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copr-pulp
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+    component: pulp
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: pulp
+  template:
+    metadata:
+      labels:
+        {{- include "copr.labels" . | nindent 8 }}
+        component: pulp
+    spec:
+      {{- if .Values.openshift.enabled }}
+      serviceAccountName: copr-anyuid
+      securityContext:
+        runAsUser: 0
+      {{- end }}
+      containers:
+        - name: pulp
+          image: ghcr.io/pulp/pulp:latest
+          env:
+            - name: PULP_DEFAULT_ADMIN_PASSWORD
+              value: "admin"
+          ports:
+            - containerPort: 80
+              {{- if .Values.dev.enabled }}
+              hostPort: 5006
+              {{- end }}
+              protocol: TCP
+          volumeMounts:
+            - name: pulp-storage
+              mountPath: /var/lib/pulp
+            - name: pulp-database
+              mountPath: /var/lib/pgsql
+          startupProbe:
+            httpGet:
+              path: /pulp/api/v3/status/
+              port: 80
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /pulp/api/v3/status/
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /pulp/api/v3/status/
+              port: 80
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+            requests:
+              memory: "1280Mi"
+              cpu: "600m"
+      volumes:
+        - name: pulp-storage
+          persistentVolumeClaim:
+            claimName: copr-pulp-storage
+        - name: pulp-database
+          persistentVolumeClaim:
+            claimName: copr-pulp-database
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulp
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  selector:
+    component: pulp
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

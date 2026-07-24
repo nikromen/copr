@@ -1,0 +1,323 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copr-backend
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+    component: backend
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "copr.labels" . | nindent 8 }}
+        component: backend
+    spec:
+      {{- if .Values.openshift.enabled }}
+      serviceAccountName: copr-anyuid
+      {{- end }}
+      securityContext:
+        fsGroup: 987
+      initContainers:
+        {{- if .Values.dev.enabled }}
+        # The host SSH keypair (dev.sshDir) is bind-mounted as-is via
+        # hostPath below ("ssh-keys-raw") -- unlike Secret volumes, hostPath
+        # mounts are NOT subject to the pod's fsGroup, so whatever uid/perms
+        # the key has on the host is what containers see. Since it's usually
+        # owned by a uid that doesn't map to "copr" inside the container,
+        # backend-build can't read it directly. Copy it (as root, without
+        # touching the host file) into an emptyDir owned by "copr" instead.
+        - name: prepare-ssh-keys
+          image: {{ include "copr.image" (dict "root" $ "component" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - "-c"
+            - |
+              install -m 0600 -o copr -g copr /ssh-keys-raw/id_ed25519 /ssh-keys/id_ed25519
+              install -m 0644 -o copr -g copr /ssh-keys-raw/id_ed25519.pub /ssh-keys/id_ed25519.pub
+          volumeMounts:
+            - name: ssh-keys-raw
+              mountPath: /ssh-keys-raw
+              readOnly: true
+            - name: ssh-keys
+              mountPath: /ssh-keys
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+        {{- end }}
+        - name: wait-redis
+          image: {{ include "copr.image" (dict "root" $ "component" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            [
+              "sh",
+              "-c",
+              "until nc -z redis 6379; do echo 'waiting for redis'; sleep 2; done",
+            ]
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+        - name: wait-resalloc
+          image: {{ include "copr.image" (dict "root" $ "component" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            [
+              "sh",
+              "-c",
+              "until nc -z resalloc 49100; do echo 'waiting for resalloc'; sleep 2; done",
+            ]
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+        - name: render-config
+          image: {{ include "copr.image" (dict "root" $ "component" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - sh
+            - "-c"
+            - 'python3 -c "import os,sys; t=open(''/etc/copr-template/copr-be.conf'').read(); t=t.replace(''__COPR_BACKEND_FRONTEND_AUTH__'', os.environ[''COPR_FRONTEND_AUTH'']); t=t.replace(''__PUBLIC_BACKEND_URL__'', os.environ.get(''PUBLIC_BACKEND_URL'', ''http://backend-httpd:5002'')); sys.stdout.write(t)" > /etc/copr-rendered/copr-be.conf'
+          env:
+            - name: COPR_FRONTEND_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: copr-backend-secrets
+                  key: frontend-auth
+            - name: PUBLIC_BACKEND_URL
+              value: {{ .Values.serviceUrls.backendBaseUrl | quote }}
+          volumeMounts:
+            - name: backend-config
+              mountPath: /etc/copr-template/copr-be.conf
+              subPath: copr-be.conf
+            - name: backend-config-rendered
+              mountPath: /etc/copr-rendered
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+      containers:
+        - name: backend-log
+          image: {{ include "copr.image" (dict "root" $ "component" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - /usr/bin/tini
+            - "--"
+            - /usr/bin/copr_run_logger.py
+          {{- if .Values.devLocal.enabled }}
+          env:
+            - name: PYTHONPATH
+              value: "/opt/copr/backend:/opt/copr/common"
+          {{- end }}
+          volumeMounts:
+            - name: results-data
+              mountPath: /var/lib/copr/public_html/results
+            - name: backend-config-rendered
+              mountPath: /etc/copr/copr-be.conf
+              subPath: copr-be.conf
+            {{- if .Values.devLocal.enabled }}
+            - name: copr-source
+              mountPath: /opt/copr
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["pgrep", "-f", "copr_run_logger"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "160Mi"
+              cpu: "120m"
+
+        - name: backend-build
+          image: {{ include "copr.image" (dict "root" $ "component" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - /usr/bin/tini
+            - "--"
+            - /run-backend
+            - "--sign-host"
+            - "keygen"
+            - /usr/bin/copr-run-dispatcher-backend
+            - builds
+          {{- if .Values.devLocal.enabled }}
+          env:
+            - name: PYTHONPATH
+              value: "/opt/copr/backend:/opt/copr/common"
+          {{- end }}
+          volumeMounts:
+            - name: results-data
+              mountPath: /var/lib/copr/public_html/results
+            - name: backend-config-rendered
+              mountPath: /etc/copr/copr-be.conf
+              subPath: copr-be.conf
+            - name: ssh-keys
+              mountPath: /home/copr/.ssh/id_ed25519
+              subPath: id_ed25519
+              readOnly: true
+            - name: ssh-keys
+              mountPath: /home/copr/.ssh/id_ed25519.pub
+              subPath: id_ed25519.pub
+              readOnly: true
+            {{- if .Values.devLocal.enabled }}
+            - name: copr-source
+              mountPath: /opt/copr
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["pgrep", "-f", "copr-run-dispatcher"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+            requests:
+              memory: "512Mi"
+              cpu: "300m"
+
+        - name: backend-action
+          image: {{ include "copr.image" (dict "root" $ "component" "backend") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - /usr/bin/tini
+            - "--"
+            - /run-backend
+            - "--sign-host"
+            - "keygen"
+            - /usr/bin/copr-run-dispatcher-backend
+            - actions
+          {{- if .Values.devLocal.enabled }}
+          env:
+            - name: PYTHONPATH
+              value: "/opt/copr/backend:/opt/copr/common"
+          {{- end }}
+          volumeMounts:
+            - name: results-data
+              mountPath: /var/lib/copr/public_html/results
+            - name: backend-config-rendered
+              mountPath: /etc/copr/copr-be.conf
+              subPath: copr-be.conf
+            {{- if .Values.devLocal.enabled }}
+            - name: copr-source
+              mountPath: /opt/copr
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["pgrep", "-f", "copr-run-dispatcher"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "120m"
+
+        - name: backend-httpd
+          image: {{ include "copr.image" (dict "root" $ "component" "backend-httpd") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - containerPort: 5002
+              {{- if .Values.dev.enabled }}
+              hostPort: 5002
+              {{- end }}
+              protocol: TCP
+          volumeMounts:
+            - name: results-data
+              mountPath: /var/lib/copr/public_html/results
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5002
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "160Mi"
+              cpu: "120m"
+
+      volumes:
+        - name: backend-config
+          configMap:
+            name: copr-backend-config
+        - name: backend-config-rendered
+          emptyDir: {}
+        - name: results-data
+          persistentVolumeClaim:
+            claimName: copr-results-data
+        {{- if .Values.dev.enabled }}
+        - name: ssh-keys-raw
+          hostPath:
+            path: {{ .Values.dev.sshDir }}
+            type: Directory
+        - name: ssh-keys
+          emptyDir: {}
+        {{- else }}
+        - name: ssh-keys
+          secret:
+            secretName: copr-ssh-keys
+            defaultMode: 0640
+            optional: true
+        {{- end }}
+        {{- if .Values.devLocal.enabled }}
+        - name: copr-source
+          hostPath:
+            path: {{ .Values.devLocal.sourcePath }}
+            type: Directory
+        {{- end }}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-httpd
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  selector:
+    component: backend
+  ports:
+    - name: http
+      port: 5002
+      targetPort: 5002
+      protocol: TCP

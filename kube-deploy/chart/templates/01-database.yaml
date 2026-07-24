@@ -1,0 +1,111 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copr-database
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+    component: database
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: database
+  template:
+    metadata:
+      labels:
+        {{- include "copr.labels" . | nindent 8 }}
+        component: database
+    spec:
+      {{- if .Values.openshift.enabled }}
+      serviceAccountName: copr-anyuid
+      {{- end }}
+      securityContext:
+        runAsUser: 26
+        fsGroup: 26
+        # On OpenShift, the default fsGroupChangePolicy ("Always") recursively
+        # chowns/chmods the PVC on every mount, which can leave pgdata
+        # group-writable (e.g. 0770) and postgres refuses to start unless it's
+        # exactly 0700 or 0750. "OnRootMismatch" makes the kubelet skip the
+        # recursive change whenever the volume root already has the expected
+        # perms.
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: database
+          image: {{ include "copr.image" (dict "root" $ "component" "database") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - name: PGDATA
+              value: /var/lib/pgsql/data/pgdata
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: copr-database-secrets
+                  key: username
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: copr-database-secrets
+                  key: password
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: copr-database-secrets
+                  key: database
+          ports:
+            - containerPort: 5432
+              {{- if .Values.dev.enabled }}
+              hostPort: 5009
+              {{- end }}
+              protocol: TCP
+          volumeMounts:
+            - name: database-data
+              mountPath: /var/lib/pgsql/data
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "320Mi"
+              cpu: "300m"
+      volumes:
+        - name: database-data
+          persistentVolumeClaim:
+            claimName: copr-database-data
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  selector:
+    component: database
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: 5432
+      protocol: TCP

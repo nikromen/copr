@@ -1,0 +1,149 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copr-keygen
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+    component: keygen
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: keygen
+  template:
+    metadata:
+      labels:
+        {{- include "copr.labels" . | nindent 8 }}
+        component: keygen
+    spec:
+      hostname: keygen
+      {{- if .Values.openshift.enabled }}
+      serviceAccountName: copr-anyuid
+      {{- end }}
+      containers:
+        - name: keygen-signd
+          image: {{ include "copr.image" (dict "root" $ "component" "keygen") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - /usr/bin/tini
+            - "--"
+            - /signd-entrypoint
+          ports:
+            - containerPort: 5167
+              protocol: TCP
+          volumeMounts:
+            - name: keygen-data
+              mountPath: /var/lib/copr-keygen
+            {{- if .Values.devLocal.enabled }}
+            - name: copr-source
+              mountPath: /opt/copr
+            {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: 5167
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 5167
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "160Mi"
+              cpu: "120m"
+
+        - name: keygen-httpd
+          image: {{ include "copr.image" (dict "root" $ "component" "keygen") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          {{- if .Values.devLocal.enabled }}
+          # Kustomize's strategic-merge patch fully replaces this scalar-list
+          # command (no merge key applies to string arrays) -- the dev-local
+          # variant intentionally drops the tini wrapper.
+          command:
+            - bash
+            - -c
+            - |
+              rm -rf /usr/share/copr-keygen/copr_keygen
+              ln -s /opt/copr/keygen/src/copr_keygen /usr/share/copr-keygen/copr_keygen
+              exec httpd -DFOREGROUND
+          {{- else }}
+          command:
+            - /usr/bin/tini
+            - "--"
+            - /bin/bash
+            - "-c"
+            - "mkdir --mode=0700 -p /var/lib/copr-keygen/phrases /var/lib/copr-keygen/gnupg && mkdir --mode=0755 -p /var/run/httpd && exec /usr/sbin/httpd -DFOREGROUND"
+          {{- end }}
+          ports:
+            - containerPort: 5003
+              protocol: TCP
+          {{- if .Values.devLocal.enabled }}
+          env:
+            - name: PYTHONPATH
+              value: "/opt/copr/keygen/src:/opt/copr/common"
+          {{- end }}
+          volumeMounts:
+            - name: keygen-data
+              mountPath: /var/lib/copr-keygen
+            {{- if .Values.devLocal.enabled }}
+            - name: copr-source
+              mountPath: /opt/copr
+            {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: 5003
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 5003
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "160Mi"
+              cpu: "120m"
+
+      volumes:
+        - name: keygen-data
+          persistentVolumeClaim:
+            claimName: copr-keygen-data
+        {{- if .Values.devLocal.enabled }}
+        - name: copr-source
+          hostPath:
+            path: {{ .Values.devLocal.sourcePath }}
+            type: Directory
+        {{- end }}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keygen
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  selector:
+    component: keygen
+  ports:
+    - name: httpd
+      port: 5003
+      targetPort: 5003
+      protocol: TCP
+    - name: signd
+      port: 5167
+      targetPort: 5167
+      protocol: TCP

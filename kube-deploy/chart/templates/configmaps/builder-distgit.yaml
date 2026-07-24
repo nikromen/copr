@@ -1,0 +1,16 @@
+{{- if .Values.openshift.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: copr-builder-distgit-client
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+data:
+  zz-openshift.ini: |
+    [distgit-openshift]
+    clone_hostnames = {{ .Values.openshift.distgitHostname }}
+    lookaside_location = http://{{ .Values.openshift.distgitHostname }}
+    lookaside_uri_pattern = repo/pkgs/{namespace[1]}/{namespace[0]}/{name}/{filename}/{hash}/{filename}
+{{- end }}

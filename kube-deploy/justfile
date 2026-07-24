@@ -58,23 +58,25 @@ build mode="dev" pr_id="": generate-ssh-keys (build-base mode)
 
 # ─── Deploy ──────────────────────────────────────────────────────────────────
 
-# Render kustomize manifests and apply via podman kube play
+# Render the Helm chart for the given mode ("dev", "dev-local", "openshift",
+# or "base" for chart defaults only) and apply via podman kube play.
 [private]
 kube-play overlay="base":
     #!/bin/bash
     set -euo pipefail
-    manifests_dir="manifests"
-    if [ -d "$manifests_dir/overlays/{{overlay}}" ]; then
-        target="$manifests_dir/overlays/{{overlay}}"
-    else
-        target="$manifests_dir/{{overlay}}"
-    fi
     socket_path="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
     ssh_dir="{{justfile_directory()}}/containers/.ssh"
-    kustomize build "$target" \
-        | sed -e "s|COPR_SOURCE_PATH|{{copr_root}}|g" \
-              -e "s|PODMAN_SOCKET_PATH|${socket_path}|g" \
-              -e "s|REPLACE_COPR_SSH_DIR|${ssh_dir}|g" \
+    values_args=(-f chart/values.yaml)
+    case "{{overlay}}" in
+        dev)       values_args+=(-f chart/values-dev.yaml) ;;
+        dev-local) values_args+=(-f chart/values-dev.yaml -f chart/values-dev-local.yaml) ;;
+        openshift) values_args+=(-f chart/values-openshift.yaml) ;;
+        base) ;;
+    esac
+    helm template copr chart "${values_args[@]}" \
+        --set dev.podmanSocketPath="${socket_path}" \
+        --set dev.sshDir="${ssh_dir}" \
+        --set devLocal.sourcePath="{{copr_root}}" \
         | podman kube play --replace --no-hosts --network {{network}} -
 
 # Start infrastructure (dev mode - @copr/copr-dev packages)
@@ -163,7 +165,7 @@ up-openshift: generate-ssh-keys push-images-to-crc
         --from-file=id_ed25519.pub="$ssh_dir/id_ed25519.pub" \
         --dry-run=client -o yaml | oc apply -f -
     echo "Applying manifests..."
-    kustomize build manifests/overlays/openshift/ | oc apply -f -
+    helm template copr chart -f chart/values.yaml -f chart/values-openshift.yaml | oc apply -f -
     # Images are always tagged ":latest" with imagePullPolicy: Never (loaded
     # straight into the VM's container storage above), so `oc apply` sees no
     # spec diff and won't recreate pods on its own.
@@ -180,7 +182,7 @@ down-openshift:
     #!/bin/bash
     eval $(crc oc-env --shell bash)
     oc delete pods -n copr -l app=copr-builder --ignore-not-found 2>/dev/null || true
-    kustomize build manifests/overlays/openshift/ | oc delete --ignore-not-found -f - 2>/dev/null || true
+    helm template copr chart -f chart/values.yaml -f chart/values-openshift.yaml | oc delete --ignore-not-found -f - 2>/dev/null || true
     oc delete namespace copr --ignore-not-found 2>/dev/null || true
     echo "Stopped"
 
@@ -242,18 +244,19 @@ restart service:
 render overlay="base":
     #!/bin/bash
     set -euo pipefail
-    manifests_dir="manifests"
-    if [ -d "$manifests_dir/overlays/{{overlay}}" ]; then
-        target="$manifests_dir/overlays/{{overlay}}"
-    else
-        target="$manifests_dir/{{overlay}}"
-    fi
     socket_path="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
     ssh_dir="{{justfile_directory()}}/containers/.ssh"
-    kustomize build "$target" \
-        | sed -e "s|COPR_SOURCE_PATH|{{copr_root}}|g" \
-              -e "s|PODMAN_SOCKET_PATH|${socket_path}|g" \
-              -e "s|REPLACE_COPR_SSH_DIR|${ssh_dir}|g"
+    values_args=(-f chart/values.yaml)
+    case "{{overlay}}" in
+        dev)       values_args+=(-f chart/values-dev.yaml) ;;
+        dev-local) values_args+=(-f chart/values-dev.yaml -f chart/values-dev-local.yaml) ;;
+        openshift) values_args+=(-f chart/values-openshift.yaml) ;;
+        base) ;;
+    esac
+    helm template copr chart "${values_args[@]}" \
+        --set dev.podmanSocketPath="${socket_path}" \
+        --set dev.sshDir="${ssh_dir}" \
+        --set devLocal.sourcePath="{{copr_root}}"
 
 # ─── Cleanup ─────────────────────────────────────────────────────────────────
 

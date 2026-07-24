@@ -1,0 +1,58 @@
+{{- if .Values.openshift.enabled }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: copr-frontend
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  port:
+    targetPort: http
+  to:
+    kind: Service
+    name: frontend
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: copr-backend
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  port:
+    targetPort: http
+  to:
+    kind: Service
+    name: backend-httpd
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: copr-distgit
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  port:
+    targetPort: http
+  to:
+    kind: Service
+    name: distgit
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: copr-resalloc
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  port:
+    targetPort: webui
+  to:
+    kind: Service
+    name: resalloc
+{{- end }}

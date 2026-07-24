@@ -1,0 +1,15 @@
+# Mirrors manifests/overlays/dev/ -- podman kube play, images built locally
+# and never pulled, host ports exposed for direct localhost access,
+# SSH keys mounted from the host instead of a Secret.
+#
+# dev.podmanSocketPath / dev.sshDir are placeholders here -- the justfile
+# passes the real absolute paths via --set at render time (replacing the old
+# PODMAN_SOCKET_PATH / REPLACE_COPR_SSH_DIR sed substitutions).
+
+images:
+  pullPolicy: Never
+
+dev:
+  enabled: true
+  podmanSocketPath: "PODMAN_SOCKET_PATH_PLACEHOLDER"
+  sshDir: "COPR_SSH_DIR_PLACEHOLDER"

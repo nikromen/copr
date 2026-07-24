@@ -1,0 +1,11 @@
+# Mirrors manifests/overlays/dev-local/ (layered on top of values-dev.yaml,
+# same as the dev-local Kustomize overlay extends ../dev). Mounts the local
+# copr source checkout into frontend/backend/distgit/keygen.
+#
+# devLocal.sourcePath is a placeholder -- the justfile passes the real
+# absolute path via --set at render time (replacing the old
+# COPR_SOURCE_PATH sed substitution).
+
+devLocal:
+  enabled: true
+  sourcePath: "COPR_SOURCE_PATH_PLACEHOLDER"

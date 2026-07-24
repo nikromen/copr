@@ -55,9 +55,11 @@ on the shared `copr` network. This means:
 - Builders are created on-demand and destroyed after use
 - The approach mirrors production deployment patterns
 
-Manifests use [Kustomize](https://kustomize.io/) with a base + overlay
-pattern. The justfile renders the selected overlay via `kustomize build`
-and pipes the result to `podman kube play`.
+Manifests are a [Helm](https://helm.sh/) chart (`chart/`) with a base
+`values.yaml` plus per-mode overrides (`values-dev.yaml`,
+`values-dev-local.yaml`, `values-openshift.yaml`). The justfile renders
+the selected mode via `helm template` and pipes the result to
+`podman kube play` (or `oc apply` on OpenShift).
 
 ## Commands
 
@@ -89,7 +91,7 @@ just down-openshift     # Tear down
 
 Images are built locally with `podman`, transferred into the CRC VM via
 `podman save | ssh podman load`, and referenced as `localhost/copr-*` with
-`imagePullPolicy: Never`. The `overlays/openshift/` kustomization handles
+`imagePullPolicy: Never`. The `chart/values-openshift.yaml` override handles
 image name prefixing, pull policy, security contexts, and resalloc pool
 sizing.
 

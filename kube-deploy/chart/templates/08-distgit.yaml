@@ -1,0 +1,178 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copr-distgit
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+    component: distgit
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      component: distgit
+  template:
+    metadata:
+      labels:
+        {{- include "copr.labels" . | nindent 8 }}
+        component: distgit
+    spec:
+      {{- if .Values.openshift.enabled }}
+      serviceAccountName: copr-anyuid
+      {{- end }}
+      initContainers:
+        - name: wait-frontend
+          image: {{ include "copr.image" (dict "root" $ "component" "distgit") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            [
+              "sh",
+              "-c",
+              "until nc -z frontend 5000; do echo 'waiting for frontend'; sleep 2; done",
+            ]
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+        - name: render-config
+          image: {{ include "copr.image" (dict "root" $ "component" "distgit") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - sh
+            - "-c"
+            - 'python3 -c "import os,sys; sys.stdout.write(open(''/etc/copr-template/copr-dist-git.conf'').read().replace(''__COPR_DISTGIT_FRONTEND_AUTH__'', os.environ[''COPR_FRONTEND_AUTH'']))" > /etc/copr-rendered/copr-dist-git.conf'
+          env:
+            - name: COPR_FRONTEND_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: copr-distgit-secrets
+                  key: frontend-auth
+          volumeMounts:
+            - name: distgit-config
+              mountPath: /etc/copr-template/copr-dist-git.conf
+              subPath: copr-dist-git.conf
+            - name: distgit-config-rendered
+              mountPath: /etc/copr-rendered
+          resources:
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+      containers:
+        - name: distgit
+          image: {{ include "copr.image" (dict "root" $ "component" "distgit") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - /usr/bin/tini
+            - "--"
+            - bash
+            - "-c"
+            - "mkdir -p /var/lib/dist-git/cache /var/lib/dist-git/git && exec /usr/bin/copr-run-dispatcher-dist-git imports"
+          {{- if .Values.devLocal.enabled }}
+          env:
+            - name: PYTHONPATH
+              value: "/opt/copr/dist-git:/opt/copr/common"
+          {{- end }}
+          volumeMounts:
+            - name: distgit-data
+              mountPath: /var/lib/dist-git
+            - name: distgit-logs
+              mountPath: /var/lib/copr-dist-git
+            - name: distgit-config-rendered
+              mountPath: /etc/copr/copr-dist-git.conf
+              subPath: copr-dist-git.conf
+            {{- if .Values.devLocal.enabled }}
+            - name: copr-source
+              mountPath: /opt/copr
+            {{- end }}
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "320Mi"
+              cpu: "300m"
+
+        - name: distgit-httpd
+          image: {{ include "copr.image" (dict "root" $ "component" "distgit") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command:
+            - /usr/sbin/httpd
+            - "-DFOREGROUND"
+          ports:
+            - containerPort: 5001
+              {{- if .Values.dev.enabled }}
+              hostPort: 5001
+              {{- end }}
+              protocol: TCP
+          volumeMounts:
+            - name: distgit-data
+              mountPath: /var/lib/dist-git
+            - name: distgit-logs
+              mountPath: /var/lib/copr-dist-git
+            {{- if .Values.devLocal.enabled }}
+            - name: copr-source
+              mountPath: /opt/copr
+            {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: 5001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5001
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "160Mi"
+              cpu: "120m"
+
+      volumes:
+        - name: distgit-config
+          configMap:
+            name: copr-distgit-config
+        - name: distgit-config-rendered
+          emptyDir: {}
+        - name: distgit-data
+          persistentVolumeClaim:
+            claimName: copr-distgit-data
+        - name: distgit-logs
+          emptyDir: {}
+        {{- if .Values.devLocal.enabled }}
+        - name: copr-source
+          hostPath:
+            path: {{ .Values.devLocal.sourcePath }}
+            type: Directory
+        {{- end }}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: distgit
+  namespace: {{ include "copr.namespace" . }}
+  labels:
+    {{- include "copr.labels" . | nindent 4 }}
+spec:
+  selector:
+    component: distgit
+  ports:
+    - name: http
+      port: 5001
+      targetPort: 5001
+      protocol: TCP

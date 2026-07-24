@@ -1,0 +1,6 @@
+apiVersion: v2
+name: copr
+description: Copr build system infrastructure (backend, frontend, dist-git, keygen, resalloc, database, redis, pulp)
+type: application
+version: 0.1.0
+appVersion: "1.0"
