@@ -57,6 +57,25 @@ class TestComplexLogic(CoprsTestCase):
                                '11-new-package': '00000015-new-package'}}
 
     @pytest.mark.usefixtures("f_users", "f_fork_prepare", "f_db")
+    def test_fork_copr_all_builds(self):
+        flask.g.user = self.u2
+        self.c2.allow_fork_all_builds = True
+        self.db.session.add(self.c2)
+        self.db.session.commit()
+
+        _, created = ComplexLogic.fork_copr(
+            self.c2, self.u2, u"dstname", all_builds=self.c2.allow_fork_all_builds,
+        )
+        assert created
+        self.db.session.commit()
+
+        actions = ActionsLogic.get_many(ActionTypeEnum("fork")).all()
+        assert len(actions) == 1
+        data = json.loads(actions[0].data)
+        assert '7-whatsupthere-world' in data["builds_map"]["fedora-17-x86_64"]
+        assert '8-whatsupthere-world' in data["builds_map"]["fedora-17-x86_64"]
+
+    @pytest.mark.usefixtures("f_users", "f_fork_prepare", "f_db")
     def test_fork_copr_with_eoled_chroots(self):
         flask.g.user = self.u2
 

@@ -1096,8 +1096,10 @@ def copr_fork_post(copr):
         if dst_copr and not form.confirm.data:
             return render_copr_fork(copr, form, confirm=True)
 
-        fcopr, created = ComplexLogic.fork_copr(copr, flask.g.user, dstname=form.name.data,
-                                                dstgroup=dstgroup)
+        fcopr, created = ComplexLogic.fork_copr(
+            copr, flask.g.user, dstname=form.name.data, dstgroup=dstgroup,
+            all_builds=copr.allow_fork_all_builds,
+        )
 
         if created:
             msg = ("Forking project {} for you into {}. Please be aware that it may take a few minutes "

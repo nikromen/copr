@@ -394,6 +394,9 @@ class _CoprPublic(db.Model, helpers.Serializer):
     # optional tools to run after build
     fedora_review = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
 
+    # fork all successful builds instead of only the latest per chroot (admin knob via psql)
+    allow_fork_all_builds = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
+
     appstream = db.Column(db.Boolean, default=True, nullable=False, server_default="1")
 
     # string containing forge projects (separated by whitespace)

@@ -144,7 +144,7 @@ class ComplexLogic(object):
 
 
     @classmethod
-    def fork_copr(cls, copr, user, dstname, dstgroup=None):
+    def fork_copr(cls, copr, user, dstname, dstgroup=None, all_builds=False):
         cls.raise_if_cant_fork(user, copr)
         forking = ProjectForking(user, dstgroup)
         created = (not bool(forking.get(copr, dstname)))
@@ -163,7 +163,7 @@ class ComplexLogic(object):
         for package in copr.packages:
             fpackage = forking.fork_package(package, fcopr)
 
-            builds = PackagesLogic.last_successful_build_chroots(package)
+            builds = PackagesLogic.successful_build_chroots(package, all_builds=all_builds)
             if not builds:
                 continue
 
@@ -527,7 +527,8 @@ class ProjectForking(object):
             fcopr = self.create_object(models.Copr, copr,
                                        exclude=["id", "group_id", "created_on",
                                                 "scm_repo_url", "scm_api_type", "scm_api_auth_json",
-                                                "persistent", "auto_prune", "contact", "webhook_secret"])
+                                                "persistent", "auto_prune", "allow_fork_all_builds",
+                                                "contact", "webhook_secret"])
             db.session.add(fcopr)
 
             fcopr.forked_from_id = copr.id

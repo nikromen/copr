@@ -184,6 +184,7 @@ class TestApiv3Projects(CoprsTestCase):
             "scm_repo_url", "id", "name", "user_id", "group_id",
             "webhook_secret", "forked_from_id", "latest_indexed_data_update",
             "copr_id", "persistent", "playground", "storage",
+            "allow_fork_all_builds",
         ]:
             should_test.remove(item)
 
